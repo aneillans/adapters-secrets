@@ -46,17 +46,26 @@ jobs:
       - name: Pack
         run: |
           VERSION=${{ github.run_number }}
+          OUT_DIR=$(dirname "${{ matrix.project }}")
           dotnet pack ${{ matrix.project }} \
             --configuration Release \
             --no-build \
             -p:PackageVersion=1.0.${VERSION} \
-            -o "$PWD/artifacts/${{ matrix.project }}"
+            -o "$PWD/artifacts/$OUT_DIR"
+
+      - name: Compute artifact name and path
+        id: meta
+        run: |
+          PROJ_DIR=$(dirname "${{ matrix.project }}")
+          PROJ_NAME=$(basename "$PROJ_DIR")
+          echo "artifact_name=nupkg-$PROJ_NAME" >> $GITHUB_OUTPUT
+          echo "artifact_path=artifacts/$PROJ_DIR/*.nupkg" >> $GITHUB_OUTPUT
 
       - name: Upload nupkg artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nupkg-${{ matrix.project }}
-          path: artifacts/${{ matrix.project }}/*.nupkg
+          name: ${{ steps.meta.outputs.artifact_name }}
+          path: ${{ steps.meta.outputs.artifact_path }}
           if-no-files-found: error
 
   publish:

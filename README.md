@@ -16,7 +16,7 @@ A .NET 10 abstraction library for seamlessly switching between different secrets
 ## Project Structure
 
 ```
-SecretsAdapter/
+adapters-secrets/
 ├── Neillans.Adapters.Secrets.Core/              # Core abstractions and interfaces
 ├── Neillans.Adapters.Secrets.AzureKeyVault/     # Azure Key Vault implementation
 └── Neillans.Adapters.Secrets.Infisical/         # Infisical implementation

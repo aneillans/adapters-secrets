@@ -17,9 +17,9 @@ jobs:
     strategy:
       matrix:
         project:
-          - SecretsAdapter.Core/SecretsAdapter.Core.csproj
-          - SecretsAdapter.AzureKeyVault/SecretsAdapter.AzureKeyVault.csproj
-          - SecretsAdapter.Infisical/SecretsAdapter.Infisical.csproj
+          - Neillans.Adapters.Secrets.Core/Neillans.Adapters.Secrets.Core.csproj
+          - Neillans.Adapters.Secrets.AzureKeyVault/Neillans.Adapters.Secrets.AzureKeyVault.csproj
+          - Neillans.Adapters.Secrets.Infisical/Neillans.Adapters.Secrets.Infisical.csproj
     steps:
       - name: Checkout
         uses: actions/checkout@v4

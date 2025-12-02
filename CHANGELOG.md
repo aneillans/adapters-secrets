@@ -50,4 +50,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Microsoft.Extensions.DependencyInjection.Abstractions 10.0.0 (Core)
 - Microsoft.Extensions.Options 10.0.0 (Providers)
 
-[1.0.0]: https://github.com/your-repo/SecretsAdapter/releases/tag/v1.0.0
+[1.0.0]: https://github.com/aneillans/adapters-secrets/releases/tag/v1.0.0

@@ -38,6 +38,49 @@ dotnet add package Neillans.Adapters.Secrets.Infisical
 ```
 
 ## Usage
+### Example Projects
+
+Two runnable console examples are included in the `Examples/` directory:
+
+- `Examples/AzureKeyVaultExample` – demonstrates configuring and interacting with Azure Key Vault via environment variables.
+- `Examples/InfisicalExample` – demonstrates configuring and interacting with Infisical.
+
+Run them by setting the required environment variables then executing:
+
+```bash
+dotnet run --project Examples/AzureKeyVaultExample
+dotnet run --project Examples/InfisicalExample
+```
+
+Azure Key Vault example expected environment variables:
+
+```
+VAULT_URI=https://your-vault.vault.azure.net/
+AZURE_TENANT_ID=<optional for client secret auth>
+AZURE_CLIENT_ID=<optional for client secret auth>
+AZURE_CLIENT_SECRET=<optional for client secret auth>
+SECRET_KEY=<optional existing secret to read>
+NEW_SECRET_KEY=<optional to create>
+NEW_SECRET_VALUE=<optional to create>
+ALLOW_MUTATING_TESTS=true   # only if you want write/delete tests to run
+```
+
+Infisical example expected environment variables:
+
+```
+INFISICAL_CLIENT_ID=
+INFISICAL_CLIENT_SECRET=
+INFISICAL_PROJECT_ID=
+INFISICAL_ENVIRONMENT=dev
+INFISICAL_SITE_URL=https://app.infisical.com   # optional
+INFISICAL_SECRET_PATH=/                        # optional path/folder
+SECRET_KEY=<optional existing secret to read>
+NEW_SECRET_KEY=<optional to create>
+NEW_SECRET_VALUE=<optional to create>
+ALLOW_MUTATING_TESTS=true   # only if you want write/delete tests to run
+```
+
+If variables are missing the examples will exit gracefully.
 
 ### Azure Key Vault
 

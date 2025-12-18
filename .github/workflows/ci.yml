@@ -148,7 +148,7 @@ jobs:
       - name: Push packages to ProGet
         env:
           PROGET_API_KEY: ${{ secrets.PROGET_API_KEY }}
-          PROGET_URL: ${{ secrets.PROGET_URL }}
+          PROGET_URL: ${{ vars.PROGET_URL }}
         run: |
           for pkg in $(find downloads -name '*.nupkg'); do
             echo "Publishing $pkg"

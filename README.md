@@ -2,7 +2,7 @@
 
 A .NET 10 abstraction library for seamlessly switching between different secrets management providers. This library provides a unified interface for accessing secrets across multiple platforms without requiring consumers to have knowledge of the underlying provider implementations.
 
-Nuget packages of this project can be downloaded from my private Nuget feed server: https://packages.neillans.co.uk/feeds/Public
+Nuget packages of this project can be downloaded from my private Nuget feed server: https://packages.neillans.co.uk/feeds/dotNet
 
 ## Features
 

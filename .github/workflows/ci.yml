@@ -70,6 +70,7 @@ jobs:
           - Neillans.Adapters.Secrets.Core/Neillans.Adapters.Secrets.Core.csproj
           - Neillans.Adapters.Secrets.AzureKeyVault/Neillans.Adapters.Secrets.AzureKeyVault.csproj
           - Neillans.Adapters.Secrets.Infisical/Neillans.Adapters.Secrets.Infisical.csproj
+          - Neillans.Adapters.Secrets.BitWarden/Neillans.Adapters.Secrets.BitWarden.csproj
     steps:
       - name: Checkout
         uses: actions/checkout@v4

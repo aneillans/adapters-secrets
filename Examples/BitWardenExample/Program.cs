@@ -5,10 +5,20 @@ using Neillans.Adapters.Secrets.Core;
 
 var builder = Host.CreateApplicationBuilder(args);
 
-// Ideally, fetch these from appsettings.json or environment variables
-var serverUrl = Environment.GetEnvironmentVariable("BITWARDEN_SERVER_URL") ?? "https://vault.example.com";
-var apiKey = Environment.GetEnvironmentVariable("BITWARDEN_API_KEY") ?? "your-api-key";
+// Fetch these from environment variables (required)
+var serverUrl = Environment.GetEnvironmentVariable("BITWARDEN_SERVER_URL");
+if (string.IsNullOrWhiteSpace(serverUrl))
+{
+    Console.WriteLine("BITWARDEN_SERVER_URL not set. Set it to your Bitwarden server URL (e.g., https://vault.bitwarden.com or your self-hosted instance URL) and try again.");
+    return;
+}
 
+var apiKey = Environment.GetEnvironmentVariable("BITWARDEN_API_KEY");
+if (string.IsNullOrWhiteSpace(apiKey))
+{
+    Console.WriteLine("BITWARDEN_API_KEY not set. Set it to your Bitwarden API key (from your Bitwarden account) and try again.");
+    return;
+}
 // Register the BitWarden Secrets Provider
 builder.Services.AddBitWardenSecretsProvider(options =>
 {

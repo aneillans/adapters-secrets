@@ -5,9 +5,11 @@ using Neillans.Adapters.Secrets.Core;
 
 var builder = Host.CreateApplicationBuilder(args);
 
-// Ideally, fetch these from appsettings.json or environment variables
-var serverUrl = Environment.GetEnvironmentVariable("BITWARDEN_SERVER_URL") ?? "https://vault.example.com";
-var apiKey = Environment.GetEnvironmentVariable("BITWARDEN_API_KEY") ?? "your-api-key";
+// Fetch these from environment variables (required)
+var serverUrl = Environment.GetEnvironmentVariable("BITWARDEN_SERVER_URL") 
+    ?? throw new InvalidOperationException("BITWARDEN_SERVER_URL environment variable is required");
+var apiKey = Environment.GetEnvironmentVariable("BITWARDEN_API_KEY") 
+    ?? throw new InvalidOperationException("BITWARDEN_API_KEY environment variable is required");
 
 // Register the BitWarden Secrets Provider
 builder.Services.AddBitWardenSecretsProvider(options =>

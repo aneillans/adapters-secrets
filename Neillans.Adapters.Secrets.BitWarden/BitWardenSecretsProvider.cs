@@ -103,18 +103,18 @@ public class BitWardenSecretsProvider : ISecretsProvider
             var items = await GetAllCiphersAsync(cancellationToken);
             var existing = items.FirstOrDefault(i => string.Equals(i.Name, key, StringComparison.OrdinalIgnoreCase));
 
-if (existing != null && !string.IsNullOrWhiteSpace(existing.Id))
-{
-    if (existing.Login?.Password is { Length: > 0 })
-        existing.Login.Password = value;
-    else if (existing.Fields?.FirstOrDefault(f => string.Equals(f.Name, "password", StringComparison.OrdinalIgnoreCase)) is { } pwField && pwField.Value is { Length: > 0 })
-        pwField.Value = value;
-    else
-        existing.Notes = value;
+            if (existing != null && !string.IsNullOrWhiteSpace(existing.Id))
+            {
+                // Preserve whichever field the value was originally stored in, falling back to Notes.
+                if (existing.Login?.Password is { Length: > 0 })
+                    existing.Login.Password = value;
+                else if (existing.Fields?.FirstOrDefault(f => string.Equals(f.Name, "password", StringComparison.OrdinalIgnoreCase)) is { } pwField && pwField.Value is { Length: > 0 })
+                    pwField.Value = value;
+                else
+                    existing.Notes = value;
 
-    var updateResponse = await _httpClient.PutAsJsonAsync($"api/ciphers/{existing.Id}", existing, cancellationToken);
-    updateResponse.EnsureSuccessStatusCode();
-}
+                var updateResponse = await _httpClient.PutAsJsonAsync($"api/ciphers/{existing.Id}", existing, cancellationToken);
+                updateResponse.EnsureSuccessStatusCode();
             }
             else
             {

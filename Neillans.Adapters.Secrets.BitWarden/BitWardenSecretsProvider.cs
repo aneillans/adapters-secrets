@@ -71,17 +71,24 @@ public class BitWardenSecretsProvider : ISecretsProvider
 
     public async Task<IDictionary<string, string?>> GetSecretsAsync(IEnumerable<string> keys, CancellationToken cancellationToken = default)
     {
-        var results = new Dictionary<string, string?>();
-        var items = await GetAllCiphersAsync(cancellationToken);
-
-        var lookup = items.ToDictionary(i => i.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase);
-
-        foreach (var key in keys)
+        try
         {
-            results[key] = lookup.TryGetValue(key ?? string.Empty, out var item) ? ExtractValue(item) : null;
-        }
+            var results = new Dictionary<string, string?>();
+            var items = await GetAllCiphersAsync(cancellationToken);
 
-        return results;
+            var lookup = items.ToDictionary(i => i.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var key in keys)
+            {
+                results[key] = lookup.TryGetValue(key ?? string.Empty, out var item) ? ExtractValue(item) : null;
+            }
+
+            return results;
+        }
+        catch (Exception ex)
+        {
+            throw new SecretsProviderException("Failed to get secrets from BitWarden", ex);
+        }
     }
 
     public async Task SetSecretAsync(string key, string value, CancellationToken cancellationToken = default)

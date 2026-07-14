@@ -10,9 +10,10 @@ Choose and install the packages you need:
 # Install Core (required)
 dotnet add package Neillans.Adapters.Secrets.Core
 
-# Install one or both providers
+# Install one or more providers
 dotnet add package Neillans.Adapters.Secrets.AzureKeyVault
 dotnet add package Neillans.Adapters.Secrets.Infisical
+dotnet add package Neillans.Adapters.Secrets.BitWarden
 ```
 
 ## Basic Usage
@@ -62,6 +63,35 @@ var provider = services.BuildServiceProvider()
 // Get a secret
 var secret = await provider.GetSecretAsync("api-key");
 Console.WriteLine($"API Key: {secret}");
+```
+
+### Option 3: BitWarden / VaultWarden
+
+```csharp
+using Microsoft.Extensions.DependencyInjection;
+using Neillans.Adapters.Secrets.BitWarden;
+using Neillans.Adapters.Secrets.Core;
+
+// Setup
+var services = new ServiceCollection();
+services.AddBitWardenSecretsProvider(options =>
+{
+    options.ServerUrl = "https://vault.example.com"; // or self-hosted VaultWarden URL
+
+    // Either a static API key...
+    options.ApiKey = "your-api-key";
+
+    // ...or a BitWarden Organization API Key (mutually exclusive with ApiKey):
+    // options.ClientId = "organization.your-client-id";
+    // options.ClientSecret = "your-client-secret";
+});
+
+var provider = services.BuildServiceProvider()
+    .GetRequiredService<ISecretsProvider>();
+
+// Get a secret
+var secret = await provider.GetSecretAsync("db-password");
+Console.WriteLine($"Password: {secret}");
 ```
 
 ## Common Operations
@@ -179,6 +209,24 @@ services.AddInfisicalSecretsProvider(options =>
     options.SiteUrl = "https://app.infisical.com";
     options.Environment = "dev";
     options.SecretPath = "/";
+});
+```
+
+### BitWarden / VaultWarden
+
+```csharp
+services.AddBitWardenSecretsProvider(options =>
+{
+    // Required
+    options.ServerUrl = "https://vault.example.com";
+
+    // Option 1: static API key
+    options.ApiKey = "your-api-key";
+
+    // Option 2: Organization API Key (mutually exclusive with ApiKey)
+    // options.ClientId = "organization.your-client-id";
+    // options.ClientSecret = "your-client-secret";
+    // options.OrganizationId = "your-organization-id"; // optional: scope to the org vault
 });
 ```
 

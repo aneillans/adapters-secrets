@@ -16,6 +16,12 @@ This directory contains example applications demonstrating how to use the Secret
 2. Update the configuration in the example
 3. Run: `dotnet run --project InfisicalExample`
 
+### BitWarden Example
+
+1. Get your BitWarden/VaultWarden server URL, plus either a static API key or an Organization API Key (Client ID/Secret)
+2. Update the configuration in the example, or set the corresponding environment variables
+3. Run: `dotnet run --project BitWardenExample`
+
 ## Configuration
 
 For production use, store sensitive configuration (client secrets, etc.) in:

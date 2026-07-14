@@ -13,17 +13,33 @@ if (string.IsNullOrWhiteSpace(serverUrl))
     return;
 }
 
+// Either a static API key, or a BitWarden Organization API Key (client id/secret pair), is required.
 var apiKey = Environment.GetEnvironmentVariable("BITWARDEN_API_KEY");
-if (string.IsNullOrWhiteSpace(apiKey))
+var clientId = Environment.GetEnvironmentVariable("BITWARDEN_CLIENT_ID");
+var clientSecret = Environment.GetEnvironmentVariable("BITWARDEN_CLIENT_SECRET");
+var organizationId = Environment.GetEnvironmentVariable("BITWARDEN_ORGANIZATION_ID");
+
+if (string.IsNullOrWhiteSpace(apiKey) && (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret)))
 {
-    Console.WriteLine("BITWARDEN_API_KEY not set. Set it to your Bitwarden API key (from your Bitwarden account) and try again.");
+    Console.WriteLine("Set either BITWARDEN_API_KEY, or both BITWARDEN_CLIENT_ID and BITWARDEN_CLIENT_SECRET (an Organization API Key), and try again.");
     return;
 }
+
 // Register the BitWarden Secrets Provider
 builder.Services.AddBitWardenSecretsProvider(options =>
 {
     options.ServerUrl = serverUrl;
-    options.ApiKey = apiKey;
+
+    if (!string.IsNullOrWhiteSpace(clientId) && !string.IsNullOrWhiteSpace(clientSecret))
+    {
+        options.ClientId = clientId;
+        options.ClientSecret = clientSecret;
+        options.OrganizationId = organizationId;
+    }
+    else
+    {
+        options.ApiKey = apiKey!;
+    }
 });
 
 var host = builder.Build();

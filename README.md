@@ -10,6 +10,7 @@ Nuget packages of this project can be downloaded from my private Nuget feed serv
 - **Multiple Providers**: Built-in support for:
   - Azure Key Vault
   - Infisical
+  - BitWarden / VaultWarden
 - **Fully Encapsulated**: All provider-specific dependencies are contained within their respective packages
 - **Dependency Injection**: First-class support for Microsoft.Extensions.DependencyInjection
 - **Async/Await**: Fully asynchronous API with cancellation token support
@@ -21,7 +22,8 @@ Nuget packages of this project can be downloaded from my private Nuget feed serv
 adapters-secrets/
 ├── Neillans.Adapters.Secrets.Core/              # Core abstractions and interfaces
 ├── Neillans.Adapters.Secrets.AzureKeyVault/     # Azure Key Vault implementation
-└── Neillans.Adapters.Secrets.Infisical/         # Infisical implementation
+├── Neillans.Adapters.Secrets.Infisical/         # Infisical implementation
+└── Neillans.Adapters.Secrets.BitWarden/         # BitWarden / VaultWarden implementation
 ```
 
 ## Installation
@@ -37,21 +39,26 @@ dotnet add package Neillans.Adapters.Secrets.AzureKeyVault
 
 # Infisical provider
 dotnet add package Neillans.Adapters.Secrets.Infisical
+
+# BitWarden / VaultWarden provider
+dotnet add package Neillans.Adapters.Secrets.BitWarden
 ```
 
 ## Usage
 ### Example Projects
 
-Two runnable console examples are included in the `Examples/` directory:
+Three runnable console examples are included in the `Examples/` directory:
 
 - `Examples/AzureKeyVaultExample` – demonstrates configuring and interacting with Azure Key Vault via environment variables.
 - `Examples/InfisicalExample` – demonstrates configuring and interacting with Infisical.
+- `Examples/BitWardenExample` – demonstrates configuring and interacting with BitWarden / VaultWarden.
 
 Run them by setting the required environment variables then executing:
 
 ```bash
 dotnet run --project Examples/AzureKeyVaultExample
 dotnet run --project Examples/InfisicalExample
+dotnet run --project Examples/BitWardenExample
 ```
 
 Azure Key Vault example expected environment variables:
@@ -80,6 +87,22 @@ SECRET_KEY=<optional existing secret to read>
 NEW_SECRET_KEY=<optional to create>
 NEW_SECRET_VALUE=<optional to create>
 ALLOW_MUTATING_TESTS=true   # only if you want write/delete tests to run
+```
+
+If variables are missing the examples will exit gracefully.
+
+BitWarden / VaultWarden example expected environment variables:
+
+```
+BITWARDEN_SERVER_URL=https://vault.bitwarden.com    # or your self-hosted VaultWarden URL
+
+# Option 1: static API key / token
+BITWARDEN_API_KEY=
+
+# Option 2: Organization API Key (client credentials login), mutually exclusive with BITWARDEN_API_KEY
+BITWARDEN_CLIENT_ID=
+BITWARDEN_CLIENT_SECRET=
+BITWARDEN_ORGANIZATION_ID=     # optional, scopes list/get/set to the organization's vault
 ```
 
 If variables are missing the examples will exit gracefully.
@@ -155,6 +178,41 @@ var secret = await secretsProvider.GetSecretAsync("my-secret-key");
 Console.WriteLine($"Secret value: {secret}");
 ```
 
+### BitWarden / VaultWarden
+
+```csharp
+using Microsoft.Extensions.DependencyInjection;
+using Neillans.Adapters.Secrets.BitWarden;
+using Neillans.Adapters.Secrets.Core;
+
+// Configure services
+var services = new ServiceCollection();
+
+services.AddBitWardenSecretsProvider(options =>
+{
+    options.ServerUrl = "https://vault.example.com"; // or self-hosted VaultWarden URL
+
+    // Option 1: authenticate with a static API key/token
+    options.ApiKey = "your-api-key";
+
+    // Option 2: authenticate with a BitWarden Organization API Key instead (mutually
+    // exclusive with ApiKey). Logs in via the OAuth2 client_credentials grant.
+    // options.ClientId = "organization.your-client-id";
+    // options.ClientSecret = "your-client-secret";
+    // options.OrganizationId = "your-organization-id"; // optional: scope to the org vault
+});
+
+var serviceProvider = services.BuildServiceProvider();
+var secretsProvider = serviceProvider.GetRequiredService<ISecretsProvider>();
+
+// Use the provider (same interface as Azure Key Vault / Infisical)
+var secret = await secretsProvider.GetSecretAsync("my-secret-key");
+Console.WriteLine($"Secret value: {secret}");
+
+// Set a secret (creates a new secure note item, or updates an existing one by name)
+await secretsProvider.SetSecretAsync("new-secret", "secret-value");
+```
+
 ### Getting Multiple Secrets
 
 ```csharp
@@ -202,12 +260,23 @@ public interface ISecretsProvider
 - `Environment`: The environment name (default: `dev`)
 - `SecretPath`: Optional secret path/folder within the environment (default: `/`)
 
+#### BitWardenOptions
+
+- `ServerUrl` (required): The base URL of the VaultWarden/BitWarden server (default: `https://127.0.0.1`)
+- `ApiKey`: A static API key/token to use as a bearer token. Mutually exclusive with `ClientId`/`ClientSecret`
+- `ClientId` / `ClientSecret`: An Organization API Key. When set, the adapter logs in via the OAuth2 `client_credentials` grant instead of using a static `ApiKey`
+- `IdentityUrl`: Identity server URL used for the client credentials login (default: `{ServerUrl}/identity`)
+- `OrganizationId`: Optional organization id to scope list/get/set operations to that organization's vault
+- `Scope`: OAuth2 scope requested when logging in with an Organization API Key (default: `api.organization`)
+
+Note: unlike a real BitWarden client, this adapter does not perform end-to-end vault encryption/decryption; it reads and writes cipher fields (login password, custom "password" field, or notes) as plain text via the server HTTP API, so it is best suited to self-hosted VaultWarden instances used purely as a secrets store. `DeleteSecretAsync` is not supported.
+
 ## Architecture
 
 The library follows a clean architecture pattern:
 
 1. **Core Layer** (`Neillans.Adapters.Secrets.Core`): Contains abstractions, interfaces, and base types
-2. **Provider Layer** (`Neillans.Adapters.Secrets.AzureKeyVault`, `Neillans.Adapters.Secrets.Infisical`): Implements the abstractions for specific providers
+2. **Provider Layer** (`Neillans.Adapters.Secrets.AzureKeyVault`, `Neillans.Adapters.Secrets.Infisical`, `Neillans.Adapters.Secrets.BitWarden`): Implements the abstractions for specific providers
 3. **Isolation**: Each provider package contains all its dependencies - consumers only need to reference the providers they use
 
 ## Exception Handling
@@ -238,6 +307,7 @@ catch (SecretsProviderException ex)
 - .NET 10.0 or later
 - Azure Key Vault provider requires Azure.Security.KeyVault.Secrets and Azure.Identity
 - Infisical provider requires Infisical.Sdk
+- BitWarden provider has no third-party dependencies beyond `Microsoft.Extensions.Options` (uses the BitWarden/VaultWarden HTTP API directly)
 
 ## License
 
@@ -246,4 +316,5 @@ catch (SecretsProviderException ex)
 ## Contributing
 
 [Add contribution guidelines here]
-.NET Adapters to simplify switching between Azure Key Vault and Infisical
+
+.NET Adapters to simplify switching between Azure Key Vault, Infisical, and BitWarden / VaultWarden

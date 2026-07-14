@@ -9,14 +9,27 @@ public class BitWardenSecretsProviderTests
 {
     private static ISecretsProvider? BuildProvider()
     {
-        if (!RequiredPresent("BITWARDEN_SERVER_URL", "BITWARDEN_API_KEY"))
+        var hasApiKey = RequiredPresent("BITWARDEN_SERVER_URL", "BITWARDEN_API_KEY");
+        var hasOrgApiKey = RequiredPresent("BITWARDEN_SERVER_URL", "BITWARDEN_CLIENT_ID", "BITWARDEN_CLIENT_SECRET");
+
+        if (!hasApiKey && !hasOrgApiKey)
             return null;
 
         var services = new ServiceCollection();
         services.AddBitWardenSecretsProvider(options =>
         {
             options.ServerUrl = Env("BITWARDEN_SERVER_URL")!;
-            options.ApiKey = Env("BITWARDEN_API_KEY")!;
+
+            if (hasOrgApiKey)
+            {
+                options.ClientId = Env("BITWARDEN_CLIENT_ID");
+                options.ClientSecret = Env("BITWARDEN_CLIENT_SECRET");
+                options.OrganizationId = Env("BITWARDEN_ORGANIZATION_ID");
+            }
+            else
+            {
+                options.ApiKey = Env("BITWARDEN_API_KEY")!;
+            }
         });
         return services.BuildServiceProvider().GetRequiredService<ISecretsProvider>();
     }
@@ -47,13 +60,18 @@ public class BitWardenSecretsProviderTests
     }
 
     [Fact]
-    public async Task Set_Secret_Throws_NotSupported()
+    public async Task Can_Set_Secret_If_Configured()
     {
         var provider = BuildProvider();
         if (provider is null) return;
 
-        await Assert.ThrowsAsync<SecretsProviderException>(async () => 
-            await provider.SetSecretAsync("any", "value"));
+        var key = $"adapters-secrets-test-{Guid.NewGuid():N}";
+        const string value = "test-value";
+
+        await provider.SetSecretAsync(key, value);
+        var result = await provider.GetSecretAsync(key);
+
+        Assert.Equal(value, result);
     }
 
     [Fact]

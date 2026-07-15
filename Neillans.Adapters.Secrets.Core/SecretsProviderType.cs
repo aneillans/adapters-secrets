@@ -13,5 +13,15 @@ public enum SecretsProviderType
     /// <summary>
     /// Infisical provider.
     /// </summary>
-    Infisical
+    Infisical,
+    
+    /// <summary>
+    /// BitWarden / VaultWarden provider.
+    /// </summary>
+    BitWarden,    
+
+    /// <summary>
+    /// Non-persistent, in-process provider. Intended for tests and local/ephemeral runs.
+    /// </summary>
+    InMemory
 }

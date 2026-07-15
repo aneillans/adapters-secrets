@@ -24,7 +24,6 @@ public class BitWardenSecretsProviderTests
             {
                 options.ClientId = Env("BITWARDEN_CLIENT_ID");
                 options.ClientSecret = Env("BITWARDEN_CLIENT_SECRET");
-                options.OrganizationId = Env("BITWARDEN_ORGANIZATION_ID");
             }
             else
             {
@@ -36,6 +35,45 @@ public class BitWardenSecretsProviderTests
 
     private static string? Env(string name) => Environment.GetEnvironmentVariable(name);
     private static bool RequiredPresent(params string[] vars) => vars.All(v => !string.IsNullOrWhiteSpace(Env(v)));
+
+    [Fact]
+    public void OrganizationId_Is_Derived_From_ClientId_When_Not_Explicitly_Set()
+    {
+        var services = new ServiceCollection();
+        services.AddBitWardenSecretsProvider(options =>
+        {
+            options.ServerUrl = "https://vault.example.com";
+            options.ClientId = "organization.f7b1234d-5f59-4444-8b5a-12345678efac";
+            options.ClientSecret = "secret";
+        });
+
+        var provider = (BitWardenSecretsProvider)services.BuildServiceProvider().GetRequiredService<ISecretsProvider>();
+        var organizationId = typeof(BitWardenSecretsProvider)
+            .GetField("_organizationId", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+            .GetValue(provider);
+
+        Assert.Equal("f7b1234d-5f59-4444-8b5a-12345678efac", organizationId);
+    }
+
+    [Fact]
+    public void OrganizationId_Explicit_Value_Overrides_Derived_ClientId_Value()
+    {
+        var services = new ServiceCollection();
+        services.AddBitWardenSecretsProvider(options =>
+        {
+            options.ServerUrl = "https://vault.example.com";
+            options.ClientId = "organization.f7b1234d-5f59-4444-8b5a-12345678efac";
+            options.ClientSecret = "secret";
+            options.OrganizationId = "override-org-id";
+        });
+
+        var provider = (BitWardenSecretsProvider)services.BuildServiceProvider().GetRequiredService<ISecretsProvider>();
+        var organizationId = typeof(BitWardenSecretsProvider)
+            .GetField("_organizationId", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+            .GetValue(provider);
+
+        Assert.Equal("override-org-id", organizationId);
+    }
 
     [Fact]
     public async Task Can_Get_Secret_If_Configured()

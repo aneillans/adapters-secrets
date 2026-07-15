@@ -11,6 +11,7 @@ Nuget packages of this project can be downloaded from my private Nuget feed serv
   - Azure Key Vault
   - Infisical
   - BitWarden / VaultWarden
+  - In-Memory (for tests and local/ephemeral runs)
 - **Fully Encapsulated**: All provider-specific dependencies are contained within their respective packages
 - **Dependency Injection**: First-class support for Microsoft.Extensions.DependencyInjection
 - **Async/Await**: Fully asynchronous API with cancellation token support
@@ -23,7 +24,8 @@ adapters-secrets/
 ├── Neillans.Adapters.Secrets.Core/              # Core abstractions and interfaces
 ├── Neillans.Adapters.Secrets.AzureKeyVault/     # Azure Key Vault implementation
 ├── Neillans.Adapters.Secrets.Infisical/         # Infisical implementation
-└── Neillans.Adapters.Secrets.BitWarden/         # BitWarden / VaultWarden implementation
+├── Neillans.Adapters.Secrets.BitWarden/         # BitWarden / VaultWarden implementation
+└── Neillans.Adapters.Secrets.InMemory/          # Non-persistent, in-process implementation
 ```
 
 ## Installation
@@ -42,6 +44,9 @@ dotnet add package Neillans.Adapters.Secrets.Infisical
 
 # BitWarden / VaultWarden provider
 dotnet add package Neillans.Adapters.Secrets.BitWarden
+
+# In-Memory provider (tests / local ephemeral runs)
+dotnet add package Neillans.Adapters.Secrets.InMemory
 ```
 
 ## Usage
@@ -213,6 +218,32 @@ Console.WriteLine($"Secret value: {secret}");
 await secretsProvider.SetSecretAsync("new-secret", "secret-value");
 ```
 
+### In-Memory
+
+```csharp
+using Microsoft.Extensions.DependencyInjection;
+using Neillans.Adapters.Secrets.InMemory;
+using Neillans.Adapters.Secrets.Core;
+
+// Configure services
+var services = new ServiceCollection();
+services.AddInMemorySecretsProvider();
+
+var serviceProvider = services.BuildServiceProvider();
+var secretsProvider = serviceProvider.GetRequiredService<ISecretsProvider>();
+
+// Use the provider (same interface as the other providers)
+await secretsProvider.SetSecretAsync("my-secret-key", "my-secret-value");
+var secret = await secretsProvider.GetSecretAsync("my-secret-key");
+Console.WriteLine($"Secret value: {secret}");
+```
+
+Secrets are held only in an in-process `ConcurrentDictionary` and are lost when the
+process exits. This provider requires no external configuration and no network access,
+making it ideal for unit/integration tests and local development where a real secrets
+backend isn't available. It is registered as a singleton so secrets persist for the
+lifetime of the application, but are never shared across processes.
+
 ### Getting Multiple Secrets
 
 ```csharp
@@ -271,12 +302,16 @@ public interface ISecretsProvider
 
 Note: unlike a real BitWarden client, this adapter does not perform end-to-end vault encryption/decryption; it reads and writes cipher fields (login password, custom "password" field, or notes) as plain text via the server HTTP API, so it is best suited to self-hosted VaultWarden instances used purely as a secrets store. `DeleteSecretAsync` is not supported.
 
+#### InMemory Provider
+
+The in-memory provider takes no configuration options; call `AddInMemorySecretsProvider()` to register it. It is not persistent and not shared across processes, so it is not suitable for production use.
+
 ## Architecture
 
 The library follows a clean architecture pattern:
 
 1. **Core Layer** (`Neillans.Adapters.Secrets.Core`): Contains abstractions, interfaces, and base types
-2. **Provider Layer** (`Neillans.Adapters.Secrets.AzureKeyVault`, `Neillans.Adapters.Secrets.Infisical`, `Neillans.Adapters.Secrets.BitWarden`): Implements the abstractions for specific providers
+2. **Provider Layer** (`Neillans.Adapters.Secrets.AzureKeyVault`, `Neillans.Adapters.Secrets.Infisical`, `Neillans.Adapters.Secrets.BitWarden`, `Neillans.Adapters.Secrets.InMemory`): Implements the abstractions for specific providers
 3. **Isolation**: Each provider package contains all its dependencies - consumers only need to reference the providers they use
 
 ## Exception Handling
@@ -308,6 +343,7 @@ catch (SecretsProviderException ex)
 - Azure Key Vault provider requires Azure.Security.KeyVault.Secrets and Azure.Identity
 - Infisical provider requires Infisical.Sdk
 - BitWarden provider has no third-party dependencies beyond `Microsoft.Extensions.Options` (uses the BitWarden/VaultWarden HTTP API directly)
+- In-Memory provider has no third-party dependencies beyond `Microsoft.Extensions.DependencyInjection.Abstractions`
 
 ## License
 
@@ -317,4 +353,4 @@ catch (SecretsProviderException ex)
 
 [Add contribution guidelines here]
 
-.NET Adapters to simplify switching between Azure Key Vault, Infisical, and BitWarden / VaultWarden
+.NET Adapters to simplify switching between Azure Key Vault, Infisical, BitWarden / VaultWarden, and an in-memory provider

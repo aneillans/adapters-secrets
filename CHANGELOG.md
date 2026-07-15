@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-07-15
+
+### Added
+
+#### In-Memory Provider (Neillans.Adapters.Secrets.InMemory)
+- Full implementation of `ISecretsProvider` backed by a non-persistent, in-process `ConcurrentDictionary`
+- Intended for unit/integration tests and local/ephemeral runs where no real secrets backend is required
+- Dependency injection extensions via `AddInMemorySecretsProvider`
+- No external configuration or network access required
+
+#### BitWarden / VaultWarden Provider (Neillans.Adapters.Secrets.BitWarden)
+- Access BitWarden and VaultWarden instances using API Key or Org Key's
+
 ## [1.0.0] - 2025-12-01
 
 ### Added

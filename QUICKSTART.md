@@ -223,10 +223,11 @@ services.AddBitWardenSecretsProvider(options =>
     // Option 1: static API key
     options.ApiKey = "your-api-key";
 
-    // Option 2: Organization API Key (mutually exclusive with ApiKey)
-    // options.ClientId = "organization.your-client-id";
+    // Option 2: Organization API Key (mutually exclusive with ApiKey). The organization id is
+    // parsed automatically from ClientId ("organization.{guid}"); OrganizationId only needs to
+    // be set to override that derived value.
+    // options.ClientId = "organization.your-organization-id";
     // options.ClientSecret = "your-client-secret";
-    // options.OrganizationId = "your-organization-id"; // optional: scope to the org vault
 });
 ```
 

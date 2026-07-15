@@ -14,10 +14,11 @@ if (string.IsNullOrWhiteSpace(serverUrl))
 }
 
 // Either a static API key, or a BitWarden Organization API Key (client id/secret pair), is required.
+// The organization id is parsed automatically from the client id (formatted as
+// "organization.{guid}"), so a separate organization id variable is not needed.
 var apiKey = Environment.GetEnvironmentVariable("BITWARDEN_API_KEY");
 var clientId = Environment.GetEnvironmentVariable("BITWARDEN_CLIENT_ID");
 var clientSecret = Environment.GetEnvironmentVariable("BITWARDEN_CLIENT_SECRET");
-var organizationId = Environment.GetEnvironmentVariable("BITWARDEN_ORGANIZATION_ID");
 
 if (string.IsNullOrWhiteSpace(apiKey) && (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret)))
 {
@@ -34,7 +35,6 @@ builder.Services.AddBitWardenSecretsProvider(options =>
     {
         options.ClientId = clientId;
         options.ClientSecret = clientSecret;
-        options.OrganizationId = organizationId;
     }
     else
     {

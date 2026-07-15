@@ -37,9 +37,11 @@ public class BitWardenOptions
     public string? IdentityUrl { get; set; }
 
     /// <summary>
-    /// Optional organization id. When authenticating with an Organization API Key, this scopes
-    /// vault operations (list/get/set) to the specified organization's vault instead of the
-    /// individual/personal vault.
+    /// Optional organization id, scoping vault operations (list/get/set) to the specified
+    /// organization's vault instead of the individual/personal vault. When authenticating with
+    /// an Organization API Key, the client id is itself formatted as "organization.{guid}", so
+    /// this is normally derived automatically from <see cref="ClientId"/> and does not need to
+    /// be set explicitly; only supply it to override that derived value.
     /// </summary>
     public string? OrganizationId { get; set; }
 

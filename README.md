@@ -105,9 +105,9 @@ BITWARDEN_SERVER_URL=https://vault.bitwarden.com    # or your self-hosted VaultW
 BITWARDEN_API_KEY=
 
 # Option 2: Organization API Key (client credentials login), mutually exclusive with BITWARDEN_API_KEY
-BITWARDEN_CLIENT_ID=
+BITWARDEN_CLIENT_ID=      # formatted as organization.{guid}; the org id is parsed from this automatically
 BITWARDEN_CLIENT_SECRET=
-BITWARDEN_ORGANIZATION_ID=     # optional, scopes list/get/set to the organization's vault
+BITWARDEN_ORGANIZATION_ID=     # optional override; normally derived automatically from BITWARDEN_CLIENT_ID
 ```
 
 If variables are missing the examples will exit gracefully.
@@ -201,10 +201,11 @@ services.AddBitWardenSecretsProvider(options =>
     options.ApiKey = "your-api-key";
 
     // Option 2: authenticate with a BitWarden Organization API Key instead (mutually
-    // exclusive with ApiKey). Logs in via the OAuth2 client_credentials grant.
-    // options.ClientId = "organization.your-client-id";
+    // exclusive with ApiKey). Logs in via the OAuth2 client_credentials grant. The
+    // organization id is parsed automatically from ClientId ("organization.{guid}"), so
+    // OrganizationId does not need to be set unless you want to override the derived value.
+    // options.ClientId = "organization.your-organization-id";
     // options.ClientSecret = "your-client-secret";
-    // options.OrganizationId = "your-organization-id"; // optional: scope to the org vault
 });
 
 var serviceProvider = services.BuildServiceProvider();
@@ -297,7 +298,7 @@ public interface ISecretsProvider
 - `ApiKey`: A static API key/token to use as a bearer token. Mutually exclusive with `ClientId`/`ClientSecret`
 - `ClientId` / `ClientSecret`: An Organization API Key. When set, the adapter logs in via the OAuth2 `client_credentials` grant instead of using a static `ApiKey`
 - `IdentityUrl`: Identity server URL used for the client credentials login (default: `{ServerUrl}/identity`)
-- `OrganizationId`: Optional organization id to scope list/get/set operations to that organization's vault
+- `OrganizationId`: Optional organization id to scope list/get/set operations to that organization's vault. Automatically derived from `ClientId` (formatted as `organization.{guid}`) when using an Organization API Key; only set this to override that derived value
 - `Scope`: OAuth2 scope requested when logging in with an Organization API Key (default: `api.organization`)
 
 Note: unlike a real BitWarden client, this adapter does not perform end-to-end vault encryption/decryption; it reads and writes cipher fields (login password, custom "password" field, or notes) as plain text via the server HTTP API, so it is best suited to self-hosted VaultWarden instances used purely as a secrets store. `DeleteSecretAsync` is not supported.

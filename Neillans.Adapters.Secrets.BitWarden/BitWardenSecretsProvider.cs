@@ -17,6 +17,7 @@ public class BitWardenSecretsProvider : ISecretsProvider
     private readonly HttpClient _httpClient;
     private readonly BitWardenOptions _options;
     private readonly bool _usesOrganizationApiKey;
+    private readonly string? _organizationId;
     private readonly SemaphoreSlim _authLock = new(1, 1);
 
     private string? _accessToken;
@@ -42,6 +43,13 @@ public class BitWardenSecretsProvider : ISecretsProvider
             throw new ArgumentException("Specify either ApiKey or ClientId/ClientSecret, not both", nameof(options));
 
         _usesOrganizationApiKey = hasClientCredentials;
+
+        // An Organization API Key's client id is formatted as "organization.{guid}", where the
+        // guid is the organization's id. Prefer an explicitly configured OrganizationId, but
+        // fall back to deriving it from ClientId so callers don't need to supply it separately.
+        _organizationId = !string.IsNullOrWhiteSpace(_options.OrganizationId)
+            ? _options.OrganizationId
+            : TryParseOrganizationIdFromClientId(_options.ClientId);
 
         _httpClient = new HttpClient
         {
@@ -123,7 +131,7 @@ public class BitWardenSecretsProvider : ISecretsProvider
                     Name = key,
                     Type = 2, // Secure note
                     Notes = value,
-                    OrganizationId = _options.OrganizationId
+                    OrganizationId = _organizationId
                 };
 
                 var createResponse = await _httpClient.PostAsJsonAsync("api/ciphers", cipher, cancellationToken);
@@ -154,6 +162,21 @@ public class BitWardenSecretsProvider : ISecretsProvider
         }
     }
 
+    /// <summary>
+    /// Parses the organization id out of an Organization API Key's client id, which BitWarden
+    /// formats as "organization.{guid}". Returns null if the client id is missing or does not
+    /// match that format.
+    /// </summary>
+    private static string? TryParseOrganizationIdFromClientId(string? clientId)
+    {
+        const string prefix = "organization.";
+        if (string.IsNullOrWhiteSpace(clientId) || !clientId.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var candidate = clientId[prefix.Length..];
+        return Guid.TryParse(candidate, out _) ? candidate : null;
+    }
+
     private static string? ExtractValue(CipherDto item)
     {
         if (item.Login?.Password is { Length: > 0 } pwd)
@@ -171,10 +194,11 @@ public class BitWardenSecretsProvider : ISecretsProvider
         await EnsureAuthenticatedAsync(cancellationToken);
 
         // The VaultWarden/Bitwarden API exposes ciphers at /api/ciphers. When operating with an
-        // Organization API Key and an OrganizationId is configured, scope the request to that
-        // organization's vault instead of the individual/personal vault.
-        var path = !string.IsNullOrWhiteSpace(_options.OrganizationId)
-            ? $"api/organizations/{_options.OrganizationId}/ciphers"
+        // Organization API Key and an OrganizationId is configured (or derivable from the client
+        // id), scope the request to that organization's vault instead of the individual/personal
+        // vault.
+        var path = !string.IsNullOrWhiteSpace(_organizationId)
+            ? $"api/organizations/{_organizationId}/ciphers"
             : "api/ciphers";
 
         var response = await _httpClient.GetAsync(path, cancellationToken);

@@ -52,18 +52,20 @@ dotnet add package Neillans.Adapters.Secrets.InMemory
 ## Usage
 ### Example Projects
 
-Three runnable console examples are included in the `Examples/` directory:
+Four runnable console examples are included in the `examples/` directory:
 
-- `Examples/AzureKeyVaultExample` – demonstrates configuring and interacting with Azure Key Vault via environment variables.
-- `Examples/InfisicalExample` – demonstrates configuring and interacting with Infisical.
-- `Examples/BitWardenExample` – demonstrates configuring and interacting with BitWarden / VaultWarden.
+- `examples/AzureKeyVaultExample` – demonstrates configuring and interacting with Azure Key Vault via environment variables.
+- `examples/InfisicalExample` – demonstrates configuring and interacting with Infisical.
+- `examples/BitWardenExample` – demonstrates configuring and interacting with BitWarden / VaultWarden.
+- `examples/HashiCorpVaultExample` – demonstrates configuring and interacting with HashiCorp Vault.
 
 Run them by setting the required environment variables then executing:
 
 ```bash
-dotnet run --project Examples/AzureKeyVaultExample
-dotnet run --project Examples/InfisicalExample
-dotnet run --project Examples/BitWardenExample
+dotnet run --project examples/AzureKeyVaultExample
+dotnet run --project examples/InfisicalExample
+dotnet run --project examples/BitWardenExample
+dotnet run --project examples/HashiCorpVaultExample
 ```
 
 Azure Key Vault example expected environment variables:
@@ -109,6 +111,26 @@ BITWARDEN_CLIENT_SECRET=
 # password is required to derive the decryption key - a token alone cannot decrypt.
 BITWARDEN_EMAIL=
 BITWARDEN_MASTER_PASSWORD=
+```
+
+If variables are missing the examples will exit gracefully.
+
+HashiCorp Vault example expected environment variables:
+
+```
+VAULT_ADDR=https://your-vault:8200
+
+# Authenticate with either a token or AppRole credentials
+VAULT_TOKEN=<token auth>
+VAULT_ROLE_ID=<AppRole auth>
+VAULT_SECRET_ID=<AppRole auth>
+
+VAULT_MOUNT=secret        # optional KV mount name
+VAULT_BASE_PATH=          # optional path prefix
+VAULT_VALUE_KEY=value     # optional field within the secret
+SECRET_KEY=<optional existing secret to read>
+NEW_SECRET_KEY=<optional to create>
+NEW_SECRET_VALUE=<optional to create>
 ```
 
 If variables are missing the examples will exit gracefully.

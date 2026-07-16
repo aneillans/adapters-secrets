@@ -270,4 +270,4 @@ catch (SecretsProviderException ex)
 
 - Check the documentation
 - Review the XML comments in the code
-- Look at the example projects in the `Examples/` directory
+- Look at the example projects in the `examples/` directory

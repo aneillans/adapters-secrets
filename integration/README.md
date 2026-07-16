@@ -56,7 +56,7 @@ single `value` field.)
 cd integration
 cp .env.example .env                     # tweak ports/credentials if you like
 
-docker compose up -d                     # start VaultWarden + Infisical
+docker compose up -d                     # start VaultWarden + Infisical + Vault
 docker compose run --rm bootstrap        # register, provision, seed -> writes .env.generated
 
 ./run-smoke.sh                           # run the smoke tests
@@ -113,7 +113,7 @@ absent. To smoke only Infisical, comment out the `BITWARDEN_*` lines in
 | `bootstrap/seed-vault.sh`         | Seeds secrets into Vault's KV v2 engine via its REST API      |
 | `seed.json`                       | The `{ key: value }` pairs seeded and verified                |
 | `run-smoke.sh`                    | Loads env + runs the SmokeTests app                           |
-| `SmokeTests/`                     | Standalone console harness driving both providers             |
+| `SmokeTests/`                     | Standalone console harness driving all three providers        |
 | `.env.example`                    | Static config template (copy to `.env`)                       |
 
 ## Troubleshooting

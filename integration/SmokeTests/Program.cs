@@ -6,8 +6,8 @@ using Neillans.Adapters.Secrets.HashiCorpVault;
 using Neillans.Adapters.Secrets.Infisical;
 
 // -----------------------------------------------------------------------------
-// Standalone, offline smoke harness for the BitWarden/VaultWarden and Infisical
-// adapters. It drives the real providers against locally running containers that
+// Standalone, offline smoke harness for the BitWarden/VaultWarden, Infisical, and
+// HashiCorp Vault adapters. It drives the real providers against locally running containers that
 // have been seeded by ../bootstrap. Nothing here talks to a hosted service.
 //
 // Configuration comes entirely from environment variables (see ../.env.example):

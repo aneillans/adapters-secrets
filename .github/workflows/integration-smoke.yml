@@ -1,7 +1,7 @@
 name: Integration Smoke
 
-# Non-blocking, post-merge smoke test of the BitWarden/VaultWarden and Infisical
-# adapters against live throwaway containers (see integration/). It runs only on
+# Non-blocking, post-merge smoke test of the BitWarden/VaultWarden, Infisical, and
+# HashiCorp Vault adapters against live throwaway containers (see integration/). It runs only on
 # pushes to main (i.e. after a merge) and never on pull_request, so it can never
 # gate a merge. On failure it opens (or updates) a tracking issue with details
 # and uploads full container logs as an artifact.
@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   smoke:
-    name: Integration smoke (VaultWarden + Infisical)
+    name: Integration smoke (VaultWarden + Infisical + Vault)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:

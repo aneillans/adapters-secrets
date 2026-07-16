@@ -3,7 +3,7 @@
 #   cd integration
 #   cp .env.example .env
 #   docker compose up -d
-#   ./bootstrap/bootstrap.sh      # seeds both systems, writes .env.generated
+#   ./bootstrap/bootstrap.sh      # seeds all three systems, writes .env.generated
 #   ./run-smoke.sh                # runs the SmokeTests console app
 #
 # Everything here is disposable: the credentials below are hard-coded on purpose

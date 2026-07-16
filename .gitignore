@@ -11,6 +11,10 @@
 *.sln.docstates
 *.env
 
+# Integration smoke-test local config + bootstrap-discovered credentials
+integration/.env
+integration/.env.generated
+
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 
@@ -165,6 +169,10 @@ coverage*.info
 # Visual Studio code coverage results
 *.coverage
 *.coveragexml
+
+# Local example/diagnostic credentials - never commit real secrets
+appsettings.local.json
+appsettings.*.local.json
 
 # NCrunch
 _NCrunch_*

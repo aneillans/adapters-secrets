@@ -78,12 +78,13 @@ services.AddBitWardenSecretsProvider(options =>
 {
     options.ServerUrl = "https://vault.example.com"; // or self-hosted VaultWarden URL
 
-    // Either a static API key...
-    options.ApiKey = "your-api-key";
+    // A personal API key (Account Settings > Security > Keys > View API Key).
+    options.ClientId = "user.your-user-guid";
+    options.ClientSecret = "your-client-secret";
 
-    // ...or a BitWarden Organization API Key (mutually exclusive with ApiKey):
-    // options.ClientId = "organization.your-client-id";
-    // options.ClientSecret = "your-client-secret";
+    // The vault is end-to-end encrypted; email + master password derive the decryption key.
+    options.Email = "you@example.com";
+    options.MasterPassword = "your-master-password";
 });
 
 var provider = services.BuildServiceProvider()
@@ -217,19 +218,18 @@ services.AddInfisicalSecretsProvider(options =>
 ```csharp
 services.AddBitWardenSecretsProvider(options =>
 {
-    // Required
+    // All required. ClientId must be a PERSONAL API key ("user.{guid}"), not an
+    // Organization API Key. The vault is end-to-end encrypted, so Email + MasterPassword
+    // are needed to derive the decryption key client-side.
     options.ServerUrl = "https://vault.example.com";
-
-    // Option 1: static API key
-    options.ApiKey = "your-api-key";
-
-    // Option 2: Organization API Key (mutually exclusive with ApiKey). The organization id is
-    // parsed automatically from ClientId ("organization.{guid}"); OrganizationId only needs to
-    // be set to override that derived value.
-    // options.ClientId = "organization.your-organization-id";
-    // options.ClientSecret = "your-client-secret";
+    options.ClientId = "user.your-user-guid";
+    options.ClientSecret = "your-client-secret";
+    options.Email = "you@example.com";
+    options.MasterPassword = "your-master-password";
 });
 ```
+
+> This adapter is **read-only** — `SetSecretAsync`/`DeleteSecretAsync` throw.
 
 ## Error Handling
 

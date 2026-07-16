@@ -8,20 +8,33 @@ namespace Neillans.Adapters.Secrets.BitWarden;
 
 /// <summary>
 /// BitWarden / VaultWarden implementation of the secrets provider.
-/// This implementation uses the server HTTP API to list, read and write cipher items.
-/// Authentication can be performed either with a static API key/token, or by logging in with a
-/// BitWarden Organization API Key (client id/secret) via the OAuth2 client_credentials grant.
+///
+/// Reads vault items from the Password Manager API. Because the vault is end-to-end encrypted, the
+/// provider authenticates with a personal API key, derives the vault keys client-side from the
+/// account email + master password, and decrypts each item locally:
+///   prelogin (KDF params) -> derive master key -> connect/token -> /api/sync -> unwrap keys -> decrypt.
+///
+/// A "secret" maps to a vault item's name; its value is taken from the login password, then a custom
+/// field named "password", then the secure-note contents.
 /// </summary>
 public class BitWardenSecretsProvider : ISecretsProvider
 {
     private readonly HttpClient _httpClient;
     private readonly BitWardenOptions _options;
-    private readonly bool _usesOrganizationApiKey;
-    private readonly string? _organizationId;
-    private readonly SemaphoreSlim _authLock = new(1, 1);
+    private readonly string _serverBase;
+    private readonly string _identityUrl;
+    private readonly SemaphoreSlim _initLock = new(1, 1);
 
     private string? _accessToken;
     private DateTimeOffset _accessTokenExpiresAt = DateTimeOffset.MinValue;
+
+    // Derived once from the master password (KDF params come from prelogin).
+    private byte[]? _stretchEnc;
+    private byte[]? _stretchMac;
+
+    // Unwrapped once from the first sync's profile.
+    private byte[]? _userSymKey;
+    private Dictionary<string, byte[]>? _orgKeys;
 
     public BitWardenSecretsProvider(IOptions<BitWardenOptions> options)
     {
@@ -32,44 +45,33 @@ public class BitWardenSecretsProvider : ISecretsProvider
 
         if (string.IsNullOrWhiteSpace(_options.ServerUrl))
             throw new ArgumentException("ServerUrl is required", nameof(options));
+        if (string.IsNullOrWhiteSpace(_options.ClientId))
+            throw new ArgumentException("ClientId is required (a personal API key, formatted as \"user.{guid}\")", nameof(options));
+        if (!_options.ClientId.StartsWith("user.", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("ClientId must be a personal API key (\"user.{guid}\"). An Organization API Key (\"organization.*\") cannot read vault items.", nameof(options));
+        if (string.IsNullOrWhiteSpace(_options.ClientSecret))
+            throw new ArgumentException("ClientSecret is required", nameof(options));
+        if (string.IsNullOrWhiteSpace(_options.Email))
+            throw new ArgumentException("Email is required (used to log in and as the key-derivation salt)", nameof(options));
+        if (string.IsNullOrWhiteSpace(_options.MasterPassword))
+            throw new ArgumentException("MasterPassword is required (it is the only source of the vault decryption key)", nameof(options));
 
-        var hasApiKey = !string.IsNullOrWhiteSpace(_options.ApiKey);
-        var hasClientCredentials = !string.IsNullOrWhiteSpace(_options.ClientId) && !string.IsNullOrWhiteSpace(_options.ClientSecret);
+        _serverBase = _options.ServerUrl.TrimEnd('/');
+        _identityUrl = (string.IsNullOrWhiteSpace(_options.IdentityUrl) ? $"{_serverBase}/identity" : _options.IdentityUrl).TrimEnd('/');
 
-        if (!hasApiKey && !hasClientCredentials)
-            throw new ArgumentException("Either ApiKey, or both ClientId and ClientSecret (Organization API Key), are required", nameof(options));
-
-        if (hasApiKey && hasClientCredentials)
-            throw new ArgumentException("Specify either ApiKey or ClientId/ClientSecret, not both", nameof(options));
-
-        _usesOrganizationApiKey = hasClientCredentials;
-
-        // An Organization API Key's client id is formatted as "organization.{guid}", where the
-        // guid is the organization's id. Prefer an explicitly configured OrganizationId, but
-        // fall back to deriving it from ClientId so callers don't need to supply it separately.
-        _organizationId = !string.IsNullOrWhiteSpace(_options.OrganizationId)
-            ? _options.OrganizationId
-            : TryParseOrganizationIdFromClientId(_options.ClientId);
-
-        _httpClient = new HttpClient
-        {
-            BaseAddress = new Uri(_options.ServerUrl.TrimEnd('/') + "/")
-        };
-
-        if (!_usesOrganizationApiKey)
-        {
-            // Attach the static bearer token up-front; no login exchange is required.
-            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _options.ApiKey);
-        }
+        _httpClient = new HttpClient { BaseAddress = new Uri(_serverBase + "/") };
     }
 
     public async Task<string?> GetSecretAsync(string key, CancellationToken cancellationToken = default)
     {
         try
         {
-            var items = await GetAllCiphersAsync(cancellationToken);
-            var match = items.FirstOrDefault(i => string.Equals(i.Name, key, StringComparison.OrdinalIgnoreCase));
-            return match == null ? null : ExtractValue(match);
+            var secrets = await GetAllDecryptedSecretsAsync(cancellationToken);
+            return secrets.TryGetValue(key ?? string.Empty, out var value) ? value : null;
+        }
+        catch (SecretsProviderException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -81,17 +83,15 @@ public class BitWardenSecretsProvider : ISecretsProvider
     {
         try
         {
+            var secrets = await GetAllDecryptedSecretsAsync(cancellationToken);
             var results = new Dictionary<string, string?>();
-            var items = await GetAllCiphersAsync(cancellationToken);
-
-            var lookup = items.ToDictionary(i => i.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase);
-
             foreach (var key in keys)
-            {
-                results[key] = lookup.TryGetValue(key ?? string.Empty, out var item) ? ExtractValue(item) : null;
-            }
-
+                results[key] = secrets.TryGetValue(key ?? string.Empty, out var value) ? value : null;
             return results;
+        }
+        catch (SecretsProviderException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -99,49 +99,11 @@ public class BitWardenSecretsProvider : ISecretsProvider
         }
     }
 
-    public async Task SetSecretAsync(string key, string value, CancellationToken cancellationToken = default)
+    public Task SetSecretAsync(string key, string value, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(key))
-            throw new ArgumentException("Key is required", nameof(key));
-
-        try
-        {
-            await EnsureAuthenticatedAsync(cancellationToken);
-
-            var items = await GetAllCiphersAsync(cancellationToken);
-            var existing = items.FirstOrDefault(i => string.Equals(i.Name, key, StringComparison.OrdinalIgnoreCase));
-
-            if (existing != null && !string.IsNullOrWhiteSpace(existing.Id))
-            {
-                // Preserve whichever field the value was originally stored in, falling back to Notes.
-                if (existing.Login?.Password is { Length: > 0 })
-                    existing.Login.Password = value;
-                else if (existing.Fields?.FirstOrDefault(f => string.Equals(f.Name, "password", StringComparison.OrdinalIgnoreCase)) is { } pwField && pwField.Value is { Length: > 0 })
-                    pwField.Value = value;
-                else
-                    existing.Notes = value;
-
-                var updateResponse = await _httpClient.PutAsJsonAsync($"api/ciphers/{existing.Id}", existing, cancellationToken);
-                updateResponse.EnsureSuccessStatusCode();
-            }
-            else
-            {
-                var cipher = new CipherDto
-                {
-                    Name = key,
-                    Type = 2, // Secure note
-                    Notes = value,
-                    OrganizationId = _organizationId
-                };
-
-                var createResponse = await _httpClient.PostAsJsonAsync("api/ciphers", cipher, cancellationToken);
-                createResponse.EnsureSuccessStatusCode();
-            }
-        }
-        catch (Exception ex)
-        {
-            throw new SecretsProviderException($"Failed to set secret '{key}' in BitWarden", ex);
-        }
+        // Writing requires client-side encryption of the value plus building an encrypted cipher
+        // payload; that path is not implemented. This adapter is read-only.
+        throw new SecretsProviderException("Set operation is not supported by the BitWarden adapter (read-only).");
     }
 
     public Task DeleteSecretAsync(string key, CancellationToken cancellationToken = default)
@@ -153,8 +115,12 @@ public class BitWardenSecretsProvider : ISecretsProvider
     {
         try
         {
-            var items = await GetAllCiphersAsync(cancellationToken);
-            return items.Select(i => i.Name ?? string.Empty);
+            var secrets = await GetAllDecryptedSecretsAsync(cancellationToken);
+            return secrets.Keys.ToList();
+        }
+        catch (SecretsProviderException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -163,104 +129,103 @@ public class BitWardenSecretsProvider : ISecretsProvider
     }
 
     /// <summary>
-    /// Parses the organization id out of an Organization API Key's client id, which BitWarden
-    /// formats as "organization.{guid}". Returns null if the client id is missing or does not
-    /// match that format.
+    /// Authenticates (if needed), fetches the encrypted vault, unwraps the keys and returns a
+    /// name -&gt; decrypted-value map for every readable item.
     /// </summary>
-    private static string? TryParseOrganizationIdFromClientId(string? clientId)
-    {
-        const string prefix = "organization.";
-        if (string.IsNullOrWhiteSpace(clientId) || !clientId.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-            return null;
-
-        var candidate = clientId[prefix.Length..];
-        return Guid.TryParse(candidate, out _) ? candidate : null;
-    }
-
-    private static string? ExtractValue(CipherDto item)
-    {
-        if (item.Login?.Password is { Length: > 0 } pwd)
-            return pwd;
-
-        var pwField = item.Fields?.FirstOrDefault(f => string.Equals(f.Name, "password", StringComparison.OrdinalIgnoreCase));
-        if (pwField?.Value is { Length: > 0 } fv)
-            return fv;
-
-        return !string.IsNullOrWhiteSpace(item.Notes) ? item.Notes : null;
-    }
-
-    private async Task<List<CipherDto>> GetAllCiphersAsync(CancellationToken cancellationToken)
+    private async Task<Dictionary<string, string?>> GetAllDecryptedSecretsAsync(CancellationToken cancellationToken)
     {
         await EnsureAuthenticatedAsync(cancellationToken);
 
-        // The VaultWarden/Bitwarden API exposes ciphers at /api/ciphers. When operating with an
-        // Organization API Key and an OrganizationId is configured (or derivable from the client
-        // id), scope the request to that organization's vault instead of the individual/personal
-        // vault.
-        var path = !string.IsNullOrWhiteSpace(_organizationId)
-            ? $"api/organizations/{_organizationId}/ciphers"
-            : "api/ciphers";
+        var sync = await _httpClient.GetFromJsonAsync<SyncResponseDto>("api/sync?excludeDomains=true", cancellationToken)
+                   ?? new SyncResponseDto();
 
-        var response = await _httpClient.GetAsync(path, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await EnsureVaultKeysAsync(sync.Profile, cancellationToken);
 
-        var result = await response.Content.ReadFromJsonAsync<CipherListResponseDto>(cancellationToken: cancellationToken);
-        if (result?.Data != null)
-            return result.Data;
+        var results = new Dictionary<string, string?>(StringComparer.Ordinal);
+        foreach (var cipher in sync.Ciphers ?? new List<CipherDto>())
+        {
+            var key = ResolveKey(cipher.OrganizationId);
+            if (key == null)
+                continue; // no key available for this cipher's organization
 
-        var items = await response.Content.ReadFromJsonAsync<List<CipherDto>>(cancellationToken: cancellationToken);
-        return items ?? new List<CipherDto>();
+            var enc = key[..32];
+            var mac = key[32..64];
+
+            var name = TryDecrypt(cipher.Name, enc, mac);
+            if (name == null)
+                continue; // cannot identify an item whose name won't decrypt
+
+            var value = TryDecrypt(cipher.Login?.Password, enc, mac)
+                        ?? TryDecrypt(cipher.Fields?.FirstOrDefault(f => string.Equals(TryDecrypt(f.Name, enc, mac), "password", StringComparison.OrdinalIgnoreCase))?.Value, enc, mac)
+                        ?? TryDecrypt(cipher.Notes, enc, mac);
+
+            // Later duplicates overwrite earlier ones rather than throwing.
+            results[name] = value;
+        }
+
+        return results;
+    }
+
+    private byte[]? ResolveKey(string? organizationId)
+    {
+        if (string.IsNullOrEmpty(organizationId))
+            return _userSymKey;
+        return _orgKeys != null && _orgKeys.TryGetValue(organizationId, out var key) ? key : null;
+    }
+
+    private static string? TryDecrypt(string? encString, byte[] enc, byte[] mac)
+    {
+        if (string.IsNullOrEmpty(encString))
+            return null;
+        try { return BitWardenCrypto.DecryptSymmetricToString(encString, enc, mac); }
+        catch { return null; }
     }
 
     /// <summary>
-    /// Ensures a valid access token is attached to the HTTP client. No-op when using a static
-    /// ApiKey. When using an Organization API Key, logs in (or refreshes) via the OAuth2
-    /// client_credentials grant if there is no token or the current one has expired.
+    /// Ensures a valid access token is attached. Derives (once) the stretched master key from the
+    /// master password, then logs in via the personal API key (client_credentials, scope api),
+    /// refreshing when the current token has expired.
     /// </summary>
     private async Task EnsureAuthenticatedAsync(CancellationToken cancellationToken)
     {
-        if (!_usesOrganizationApiKey)
-            return;
-
         if (_accessToken != null && DateTimeOffset.UtcNow < _accessTokenExpiresAt)
             return;
 
-        await _authLock.WaitAsync(cancellationToken);
+        await _initLock.WaitAsync(cancellationToken);
         try
         {
             if (_accessToken != null && DateTimeOffset.UtcNow < _accessTokenExpiresAt)
                 return;
 
-            var identityUrl = (_options.IdentityUrl ?? $"{_options.ServerUrl.TrimEnd('/')}/identity").TrimEnd('/');
+            if (_stretchEnc == null)
+                await DeriveMasterKeyAsync(cancellationToken);
 
-            using var identityClient = new HttpClient();
             var form = new Dictionary<string, string>
             {
                 ["grant_type"] = "client_credentials",
-                ["client_id"] = _options.ClientId!,
-                ["client_secret"] = _options.ClientSecret!,
-                ["scope"] = _options.Scope,
+                ["client_id"] = _options.ClientId,
+                ["client_secret"] = _options.ClientSecret,
+                ["scope"] = "api",
                 ["deviceType"] = "21", // SDK
                 ["deviceName"] = "Neillans.Adapters.Secrets.BitWarden",
                 ["deviceIdentifier"] = Guid.NewGuid().ToString()
             };
 
-            using var request = new HttpRequestMessage(HttpMethod.Post, $"{identityUrl}/connect/token")
+            using var identityClient = new HttpClient();
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"{_identityUrl}/connect/token")
             {
                 Content = new FormUrlEncodedContent(form)
             };
-
             using var response = await identityClient.SendAsync(request, cancellationToken);
             response.EnsureSuccessStatusCode();
 
             var token = await response.Content.ReadFromJsonAsync<TokenResponseDto>(cancellationToken: cancellationToken);
             if (token?.AccessToken is not { Length: > 0 })
-                throw new SecretsProviderException("BitWarden Organization API Key login did not return an access token");
+                throw new SecretsProviderException("BitWarden login did not return an access token");
 
             _accessToken = token.AccessToken;
             // Refresh a little early to avoid using a token that expires mid-request.
             _accessTokenExpiresAt = DateTimeOffset.UtcNow.AddSeconds(Math.Max(token.ExpiresIn - 60, 60));
-
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
         }
         catch (SecretsProviderException)
@@ -269,11 +234,85 @@ public class BitWardenSecretsProvider : ISecretsProvider
         }
         catch (Exception ex)
         {
-            throw new SecretsProviderException("Failed to authenticate with BitWarden using the Organization API Key", ex);
+            throw new SecretsProviderException("Failed to authenticate with BitWarden", ex);
         }
         finally
         {
-            _authLock.Release();
+            _initLock.Release();
+        }
+    }
+
+    /// <summary>Fetches the account KDF parameters and derives + stretches the master key.</summary>
+    private async Task DeriveMasterKeyAsync(CancellationToken cancellationToken)
+    {
+        var email = _options.Email;
+        using var identityClient = new HttpClient();
+        using var response = await identityClient.PostAsJsonAsync($"{_identityUrl}/accounts/prelogin", new { email }, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var prelogin = await response.Content.ReadFromJsonAsync<PreloginResponseDto>(cancellationToken: cancellationToken)
+                       ?? new PreloginResponseDto();
+
+        var masterKey = BitWardenCrypto.DeriveMasterKey(
+            _options.MasterPassword, email, prelogin.Kdf,
+            prelogin.KdfIterations,
+            prelogin.KdfMemory ?? 0,
+            prelogin.KdfParallelism ?? 0);
+
+        (_stretchEnc, _stretchMac) = BitWardenCrypto.StretchMasterKey(masterKey);
+    }
+
+    /// <summary>Unwraps (once) the user symmetric key and any organization keys from the profile.</summary>
+    private async Task EnsureVaultKeysAsync(ProfileDto? profile, CancellationToken cancellationToken)
+    {
+        if (_userSymKey != null)
+            return;
+
+        if (profile?.Key is not { Length: > 0 })
+            throw new SecretsProviderException("Sync response did not contain a profile key; cannot decrypt the vault.");
+
+        await _initLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (_userSymKey != null)
+                return;
+
+            var userSymKey = BitWardenCrypto.DecryptSymmetric(profile.Key, _stretchEnc!, _stretchMac!);
+            var orgKeys = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
+
+            if (profile.Organizations is { Count: > 0 } && profile.PrivateKey is { Length: > 0 })
+            {
+                var privateKey = BitWardenCrypto.DecryptSymmetric(profile.PrivateKey, userSymKey[..32], userSymKey[32..64]);
+                foreach (var org in profile.Organizations)
+                {
+                    if (string.IsNullOrEmpty(org.Id) || string.IsNullOrEmpty(org.Key))
+                        continue;
+                    try
+                    {
+                        orgKeys[org.Id] = BitWardenCrypto.DecryptAsymmetric(org.Key, privateKey);
+                    }
+                    catch
+                    {
+                        // Skip organizations whose key cannot be unwrapped; their ciphers are simply
+                        // omitted rather than failing the whole read.
+                    }
+                }
+            }
+
+            _orgKeys = orgKeys;
+            _userSymKey = userSymKey; // set last: signals initialization is complete
+        }
+        catch (SecretsProviderException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new SecretsProviderException("Failed to unwrap the BitWarden vault keys (check the master password and email)", ex);
+        }
+        finally
+        {
+            _initLock.Release();
         }
     }
 
@@ -284,26 +323,44 @@ public class BitWardenSecretsProvider : ISecretsProvider
 
         [JsonPropertyName("expires_in")]
         public int ExpiresIn { get; set; } = 3600;
-
-        [JsonPropertyName("token_type")]
-        public string? TokenType { get; set; }
     }
 
-    private class CipherListResponseDto
+    private class PreloginResponseDto
     {
-        [JsonPropertyName("data")]
-        public List<CipherDto>? Data { get; set; }
+        public int Kdf { get; set; }
+        public int KdfIterations { get; set; } = 600_000;
+        public int? KdfMemory { get; set; }
+        public int? KdfParallelism { get; set; }
+    }
+
+    private class SyncResponseDto
+    {
+        public ProfileDto? Profile { get; set; }
+        public List<CipherDto>? Ciphers { get; set; }
+    }
+
+    private class ProfileDto
+    {
+        public string? Key { get; set; }
+        public string? PrivateKey { get; set; }
+        public List<OrgDto>? Organizations { get; set; }
+    }
+
+    private class OrgDto
+    {
+        public string? Id { get; set; }
+        public string? Key { get; set; }
     }
 
     private class CipherDto
     {
         public string? Id { get; set; }
-        public string? Name { get; set; }
-        public int Type { get; set; } = 2;
-        public LoginDto? Login { get; set; }
-        public string? Notes { get; set; }
-        public List<FieldDto>? Fields { get; set; }
         public string? OrganizationId { get; set; }
+        public string? Name { get; set; }
+        public string? Notes { get; set; }
+        public int Type { get; set; }
+        public LoginDto? Login { get; set; }
+        public List<FieldDto>? Fields { get; set; }
     }
 
     private class LoginDto

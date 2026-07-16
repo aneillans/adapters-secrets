@@ -101,13 +101,14 @@ BitWarden / VaultWarden example expected environment variables:
 ```
 BITWARDEN_SERVER_URL=https://vault.bitwarden.com    # or your self-hosted VaultWarden URL
 
-# Option 1: static API key / token
-BITWARDEN_API_KEY=
-
-# Option 2: Organization API Key (client credentials login), mutually exclusive with BITWARDEN_API_KEY
-BITWARDEN_CLIENT_ID=      # formatted as organization.{guid}; the org id is parsed from this automatically
+# A personal API key (Account Settings > Security > Keys > View API Key)
+BITWARDEN_CLIENT_ID=      # formatted as user.{guid}
 BITWARDEN_CLIENT_SECRET=
-BITWARDEN_ORGANIZATION_ID=     # optional override; normally derived automatically from BITWARDEN_CLIENT_ID
+
+# The account email and master password. The vault is end-to-end encrypted, so the master
+# password is required to derive the decryption key - a token alone cannot decrypt.
+BITWARDEN_EMAIL=
+BITWARDEN_MASTER_PASSWORD=
 ```
 
 If variables are missing the examples will exit gracefully.
@@ -197,15 +198,14 @@ services.AddBitWardenSecretsProvider(options =>
 {
     options.ServerUrl = "https://vault.example.com"; // or self-hosted VaultWarden URL
 
-    // Option 1: authenticate with a static API key/token
-    options.ApiKey = "your-api-key";
+    // A personal API key (Account Settings > Security > Keys > View API Key).
+    options.ClientId = "user.your-user-guid";
+    options.ClientSecret = "your-client-secret";
 
-    // Option 2: authenticate with a BitWarden Organization API Key instead (mutually
-    // exclusive with ApiKey). Logs in via the OAuth2 client_credentials grant. The
-    // organization id is parsed automatically from ClientId ("organization.{guid}"), so
-    // OrganizationId does not need to be set unless you want to override the derived value.
-    // options.ClientId = "organization.your-organization-id";
-    // options.ClientSecret = "your-client-secret";
+    // The vault is end-to-end encrypted. The email + master password derive the decryption
+    // key client-side; both are required to read plaintext secrets.
+    options.Email = "you@example.com";
+    options.MasterPassword = "your-master-password";
 });
 
 var serviceProvider = services.BuildServiceProvider();
@@ -214,9 +214,6 @@ var secretsProvider = serviceProvider.GetRequiredService<ISecretsProvider>();
 // Use the provider (same interface as Azure Key Vault / Infisical)
 var secret = await secretsProvider.GetSecretAsync("my-secret-key");
 Console.WriteLine($"Secret value: {secret}");
-
-// Set a secret (creates a new secure note item, or updates an existing one by name)
-await secretsProvider.SetSecretAsync("new-secret", "secret-value");
 ```
 
 ### In-Memory
@@ -295,13 +292,15 @@ public interface ISecretsProvider
 #### BitWardenOptions
 
 - `ServerUrl` (required): The base URL of the VaultWarden/BitWarden server (default: `https://127.0.0.1`)
-- `ApiKey`: A static API key/token to use as a bearer token. Mutually exclusive with `ClientId`/`ClientSecret`
-- `ClientId` / `ClientSecret`: An Organization API Key. When set, the adapter logs in via the OAuth2 `client_credentials` grant instead of using a static `ApiKey`
-- `IdentityUrl`: Identity server URL used for the client credentials login (default: `{ServerUrl}/identity`)
-- `OrganizationId`: Optional organization id to scope list/get/set operations to that organization's vault. Automatically derived from `ClientId` (formatted as `organization.{guid}`) when using an Organization API Key; only set this to override that derived value
-- `Scope`: OAuth2 scope requested when logging in with an Organization API Key (default: `api.organization`)
+- `ClientId` (required): A **personal** API key client id, formatted as `user.{guid}` (Account Settings > Security > Keys > View API Key). An Organization API Key (`organization.*`) is rejected — it can only reach the Public API, not vault items
+- `ClientSecret` (required): The personal API key secret
+- `Email` (required): The account email. Used to log in and as the key-derivation salt
+- `MasterPassword` (required): The account master password. The vault is end-to-end encrypted, so this is the only source of the decryption key
+- `IdentityUrl`: Identity server URL used for prelogin and the token exchange (default: `{ServerUrl}/identity`)
 
-Note: unlike a real BitWarden client, this adapter does not perform end-to-end vault encryption/decryption; it reads and writes cipher fields (login password, custom "password" field, or notes) as plain text via the server HTTP API, so it is best suited to self-hosted VaultWarden instances used purely as a secrets store. `DeleteSecretAsync` is not supported.
+How it works: the adapter authenticates with the personal API key, fetches the KDF parameters via `prelogin`, derives the master key (PBKDF2-SHA256 or Argon2id) from the master password + email, then unwraps the user and organization keys and decrypts each vault item **client-side** (AES-256-CBC + HMAC-SHA256; org keys via RSA-OAEP). A secret's value is taken from the login password, then a custom field named `password`, then the secure-note contents.
+
+Note: this adapter is **read-only**. `SetSecretAsync` and `DeleteSecretAsync` throw `SecretsProviderException`.
 
 #### InMemory Provider
 
@@ -343,7 +342,7 @@ catch (SecretsProviderException ex)
 - .NET 10.0 or later
 - Azure Key Vault provider requires Azure.Security.KeyVault.Secrets and Azure.Identity
 - Infisical provider requires Infisical.Sdk
-- BitWarden provider has no third-party dependencies beyond `Microsoft.Extensions.Options` (uses the BitWarden/VaultWarden HTTP API directly)
+- BitWarden provider uses the BitWarden/VaultWarden HTTP API directly and depends on `Microsoft.Extensions.Options` plus `Konscious.Security.Cryptography.Argon2` (for Argon2id key derivation)
 - In-Memory provider has no third-party dependencies beyond `Microsoft.Extensions.DependencyInjection.Abstractions`
 
 ## License

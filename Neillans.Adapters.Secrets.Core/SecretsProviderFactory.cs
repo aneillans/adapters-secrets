@@ -21,6 +21,7 @@ public class SecretsProviderFactory : ISecretsProviderFactory
             SecretsProviderType.AzureKeyVault => _serviceProvider.GetRequiredService<ISecretsProvider>(),
             SecretsProviderType.Infisical => _serviceProvider.GetRequiredService<ISecretsProvider>(),
             SecretsProviderType.BitWarden => _serviceProvider.GetRequiredService<ISecretsProvider>(),
+            SecretsProviderType.HashiCorpVault => _serviceProvider.GetRequiredService<ISecretsProvider>(),
             SecretsProviderType.InMemory => _serviceProvider.GetRequiredService<ISecretsProvider>(),
             _ => throw new NotSupportedException($"Provider type '{providerType}' is not supported.")
         };

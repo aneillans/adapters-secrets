@@ -18,7 +18,12 @@ public enum SecretsProviderType
     /// <summary>
     /// BitWarden / VaultWarden provider.
     /// </summary>
-    BitWarden,    
+    BitWarden,
+
+    /// <summary>
+    /// HashiCorp Vault provider (KV v2 secrets engine).
+    /// </summary>
+    HashiCorpVault,
 
     /// <summary>
     /// Non-persistent, in-process provider. Intended for tests and local/ephemeral runs.

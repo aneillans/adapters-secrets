@@ -18,8 +18,10 @@ This directory contains example applications demonstrating how to use the Secret
 
 ### BitWarden Example
 
-1. Get your BitWarden/VaultWarden server URL, plus either a static API key or an Organization API Key (Client ID/Secret)
-2. Update the configuration in the example, or set the corresponding environment variables
+This example is a connection + decryption diagnostic: it authenticates, derives the vault keys and decrypts items client-side, printing each step so you can prove out (or debug) a connection.
+
+1. Get your BitWarden/VaultWarden server URL, a **personal** API key (`user.{guid}` client id/secret, from Account Settings > Security > Keys > View API Key), and the account email + master password
+2. Copy `appsettings.local.json.example` to `appsettings.local.json` (gitignored) and fill it in, or set the `BITWARDEN_*` environment variables
 3. Run: `dotnet run --project BitWardenExample`
 
 ## Configuration

@@ -1,0 +1,159 @@
+name: Integration Smoke
+
+# Non-blocking, post-merge smoke test of the BitWarden/VaultWarden and Infisical
+# adapters against live throwaway containers (see integration/). It runs only on
+# pushes to main (i.e. after a merge) and never on pull_request, so it can never
+# gate a merge. On failure it opens (or updates) a tracking issue with details
+# and uploads full container logs as an artifact.
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+# Only smoke the latest state of main; supersede an in-flight run on rapid merges.
+concurrency:
+  group: integration-smoke
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  smoke:
+    name: Integration smoke (VaultWarden + Infisical)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+        working-directory: integration
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/packages.lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Prepare env
+        run: cp .env.example .env
+
+      - name: Start stack
+        run: docker compose up -d vaultwarden infisical-db infisical-redis infisical vault
+
+      - name: Wait for services
+        run: |
+          echo "Waiting for VaultWarden /alive ..."
+          curl --retry 40 --retry-all-errors --retry-delay 3 -fsS http://localhost:8080/alive >/dev/null
+          echo "Waiting for Infisical /api/status ..."
+          curl --retry 90 --retry-all-errors --retry-delay 3 -fsS http://localhost:8082/api/status >/dev/null
+          echo "Waiting for Vault /v1/sys/health ..."
+          curl --retry 40 --retry-all-errors --retry-delay 3 -fsS http://localhost:8200/v1/sys/health >/dev/null
+          echo "All services are ready."
+
+      - name: Bootstrap (register account + provision + seed)
+        run: docker compose run --rm bootstrap
+
+      - name: Run smoke tests
+        run: |
+          set -o pipefail
+          bash run-smoke.sh 2>&1 | tee smoke-output.txt
+
+      - name: Collect container logs
+        if: always()
+        run: docker compose logs --no-color > compose-logs.txt 2>&1 || true
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-smoke-diagnostics
+          path: |
+            integration/smoke-output.txt
+            integration/compose-logs.txt
+          if-no-files-found: ignore
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v || true
+
+      - name: Open or update failure issue
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const label = 'integration-smoke-failure';
+
+            const tail = (path, max) => {
+              try {
+                const s = fs.readFileSync(path, 'utf8');
+                return s.length > max ? '...(truncated)...\n' + s.slice(-max) : s;
+              } catch {
+                return '(not captured — the failure happened before this step)';
+              }
+            };
+
+            const smoke = tail('integration/smoke-output.txt', 6000).trim();
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const shortSha = context.sha.substring(0, 7);
+
+            const body = [
+              `The **Integration Smoke** workflow failed on \`main\`.`,
+              ``,
+              `- Commit: \`${context.sha}\``,
+              `- Run: ${runUrl}`,
+              `- Full container logs: download the \`integration-smoke-diagnostics\` artifact from that run.`,
+              ``,
+              `<details><summary>Smoke output (tail)</summary>`,
+              ``,
+              '```',
+              smoke,
+              '```',
+              ``,
+              `</details>`,
+            ].join('\n');
+
+            const { owner, repo } = context.repo;
+
+            // Ensure the tracking label exists.
+            try {
+              await github.rest.issues.getLabel({ owner, repo, name: label });
+            } catch {
+              await github.rest.issues.createLabel({
+                owner, repo, name: label, color: 'b60205',
+                description: 'Automated: Integration Smoke workflow failure',
+              });
+            }
+
+            // De-dupe: comment on the open tracking issue if one exists, else open one.
+            const existing = await github.rest.issues.listForRepo({
+              owner, repo, state: 'open', labels: label, per_page: 1,
+            });
+
+            if (existing.data.length > 0) {
+              const number = existing.data[0].number;
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: number,
+                body: `Still failing as of \`${shortSha}\`.\n\n${body}`,
+              });
+              core.notice(`Commented on existing issue #${number}`);
+            } else {
+              const created = await github.rest.issues.create({
+                owner, repo, labels: [label],
+                title: `Integration smoke failing on main (${shortSha})`,
+                body,
+              });
+              core.notice(`Opened issue #${created.data.number}`);
+            }

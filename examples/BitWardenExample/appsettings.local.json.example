@@ -1,0 +1,16 @@
+{
+  "//": "Copy this file to appsettings.local.json and fill in real values. appsettings.local.json is gitignored.",
+  "//how-to-get-a-personal-api-key": "In the web vault: Account Settings -> Security -> Keys -> View API Key. It gives you client_id (user.<guid>) and client_secret.",
+  "//why-master-password": "The personal API key authenticates you, but the decryption key is derived from your master password + email. Both are required to read plaintext secrets.",
+
+  "BitWarden": {
+    "ServerUrl": "https://vault.example.com",
+    "ClientId": "user.00000000-0000-0000-0000-000000000000",
+    "ClientSecret": "your-personal-api-key-secret",
+    "Email": "you@example.com",
+    "MasterPassword": "your-master-password",
+
+    "//IdentityUrl": "Optional. Defaults to {ServerUrl}/identity. For Bitwarden cloud use https://identity.bitwarden.com",
+    "IdentityUrl": ""
+  }
+}

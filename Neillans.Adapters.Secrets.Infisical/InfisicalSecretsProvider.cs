@@ -54,7 +54,7 @@ public class InfisicalSecretsProvider : ISecretsProvider
             var secret = await _client.Secrets().GetAsync(getSecretOptions);
             return secret?.SecretValue;
         }
-        catch (Exception ex) when (ex.Message.Contains("not found") || ex.Message.Contains("404"))
+        catch (Exception ex) when (IsNotFound(ex))
         {
             return null;
         }
@@ -97,7 +97,7 @@ public class InfisicalSecretsProvider : ISecretsProvider
 
             await _client.Secrets().CreateAsync(createSecretOptions);
         }
-        catch (Exception ex) when (ex.Message.Contains("already exists"))
+        catch (Exception ex) when (ChainContains(ex, "already exists"))
         {
             // Secret exists, update it instead
             try
@@ -138,7 +138,7 @@ public class InfisicalSecretsProvider : ISecretsProvider
 
             await _client.Secrets().DeleteAsync(deleteSecretOptions);
         }
-        catch (Exception ex) when (ex.Message.Contains("not found") || ex.Message.Contains("404"))
+        catch (Exception ex) when (IsNotFound(ex))
         {
             // Secret doesn't exist, consider it deleted
             return;
@@ -167,5 +167,27 @@ public class InfisicalSecretsProvider : ISecretsProvider
         {
             throw new SecretsProviderException("Failed to list secrets from Infisical", ex);
         }
+    }
+
+    /// <summary>
+    /// True when the exception (or anything in its inner-exception chain) indicates the secret was
+    /// not found. The SDK wraps the underlying 404 in a generic "Failed to get secret" message, so
+    /// the outer message alone is not enough - the "not found" / "404" signal lives on the inner
+    /// HTTP exception.
+    /// </summary>
+    private static bool IsNotFound(Exception ex) => ChainContains(ex, "not found", "404");
+
+    /// <summary>Checks the whole inner-exception chain (case-insensitive) for any of the needles.</summary>
+    private static bool ChainContains(Exception ex, params string[] needles)
+    {
+        for (Exception? e = ex; e is not null; e = e.InnerException)
+        {
+            foreach (var needle in needles)
+            {
+                if (e.Message.Contains(needle, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+        }
+        return false;
     }
 }

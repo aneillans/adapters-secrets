@@ -1,0 +1,11 @@
+# Helper image for the seed step: Node (VaultWarden register + cipher crypto)
+# plus curl and jq (Infisical REST bootstrap). Only ever run via
+# `docker compose run --rm bootstrap`.
+FROM node:20-slim
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends curl jq ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /bootstrap
+ENTRYPOINT ["bash", "/bootstrap/entrypoint.sh"]

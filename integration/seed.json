@@ -1,0 +1,5 @@
+{
+  "smoke-login-secret": "login-value-alpha",
+  "smoke-note-secret": "note-value-bravo",
+  "smoke-field-secret": "field-value-charlie"
+}

@@ -2,14 +2,13 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Neillans.Adapters.Secrets.BitWarden\Neillans.Adapters.Secrets.BitWarden.csproj" />
+    <ProjectReference Include="..\..\Neillans.Adapters.Secrets.Infisical\Neillans.Adapters.Secrets.Infisical.csproj" />
+    <ProjectReference Include="..\..\Neillans.Adapters.Secrets.HashiCorpVault\Neillans.Adapters.Secrets.HashiCorpVault.csproj" />
     <ProjectReference Include="..\..\Neillans.Adapters.Secrets.Core\Neillans.Adapters.Secrets.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -17,6 +16,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- Deliberately kept out of the solution: this is a manual, offline smoke harness. -->
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
 
 </Project>

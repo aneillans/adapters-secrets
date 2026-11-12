@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- CI now uses the shared github-templates workflows (dotnet-ci, dotnet-pack, dotnet-nuget-publish)
+- Package versions come from next-version: `v*` tags publish that version, main publishes `-ci.<run>` prereleases
+- Updated Azure.Identity to 1.21.0, Azure.Security.KeyVault.Secrets to 4.12.0, Microsoft.Extensions.* to 10.0.15
+- Updated test dependencies (Microsoft.NET.Test.Sdk 18.12.0, xunit 2.9.3, xunit.runner.visualstudio 3.1.5)
+- Pointed the ProGet source in nuget.config at its NuGet V3 endpoint
+
 ## [1.2.0] - 2026-07-16
 
 ### Added
